@@ -1,0 +1,146 @@
+---
+title: "김도형_EDA_HW"
+output: html_document
+date: "2024-10-22"
+---
+
+## Preprocessing & Load Packages
+
+```{r setup, include=FALSE}
+suppressWarnings({
+  library(ggplot2)
+  library(mdsr)
+  library(ggthemes)
+  library(tidyverse)
+  library(Hmisc)
+  library(babynames)
+})
+
+baby = make_babynames_dist()
+baby_joseph = filter(baby, sex=='M', name=='Joseph')
+
+male_m25 <-baby %>% select(sex, name, age_today, est_alive_today) %>%
+  filter(sex=="M") %>% group_by(name) %>% summarise(number_alive=sum(est_alive_today))
+top_25_m_name<- c(male_m25 %>% arrange(desc(number_alive)) %>% slice(1:25) %>% select(name))$name
+
+
+top_25_names = baby %>%
+  filter(sex == "M") %>%
+  group_by(name) %>%
+  summarise(n = sum(n)) %>%
+  arrange(desc(n)) %>%
+  head(25) %>%
+  pull(name)
+
+
+top_names_data = baby %>%
+  filter(name %in% top_25_names, sex == "M")
+
+top_names_data = top_names_data %>%
+  mutate(age = 2014 - year)
+
+age_quantiles = top_names_data %>%
+  group_by(name) %>%
+  summarise(median = wtd.quantile(age, weights = n, probs = 0.5),
+            q25 = wtd.quantile(age, weights = n, probs = 0.25),
+            q75 = wtd.quantile(age, weights = n, probs = 0.75)) %>%
+  arrange(median)
+
+top_25<- baby %>% filter(name %in% top_25_m_name, est_alive_today>0 )%>%
+  select(name,age_today,est_alive_today)%>% group_by(name)%>%
+  summarise(q1=wtd.quantile(age_today,est_alive_today, probs = 0.25),
+            q2=wtd.quantile(age_today,est_alive_today, probs = 0.5),
+            q3=wtd.quantile(age_today,est_alive_today, probs = 0.75))%>%
+  arrange(q2)
+
+highlight_year <- 1975
+highlight_prop <- 0.01364239
+
+
+str(age_quantiles)
+
+label_custom_format <- function(x) {
+  ifelse(x == 40000, "40k", as.character(x / 1000 * 10))
+}
+
+label_year_format <- function(x) {
+  ifelse(x %% 100 == 0, as.character(x), paste0("'", substr(x, 3, 4)))
+}
+
+x_breaks <- seq(1900, 2010, by = 10)
+
+
+```
+
+## Q1
+
+```{r cars}
+
+ggplot(baby_joseph, aes(x = year)) +
+  geom_bar(aes(y = est_alive_today), stat = "identity", fill = "skyblue", alpha = 0.5) +
+  
+  
+  geom_bar(data = baby_joseph %>% filter(year == highlight_year), aes(x = year, y = est_alive_today), stat = "identity", fill = "blue", alpha = 0.8) +
+  
+  
+  geom_line(aes(y = n), size = 1, color = "black") +
+  
+  annotate("text", x = 1930, y = 32000, label = "Number of Josephs\nborn each year",
+           size = 4, color = "black", hjust = 0) +
+  annotate("text", x = 1924, y = 10800, label = "Number of Josephs\nborn each year\nestimated to be alive.",
+           color = "blue", size = 4, hjust = 0) +
+  annotate("text", x = 2000, y = 37000, label = "The median\nliving Josephs\nis 37 years old.",
+           size = 4, hjust = 0) +
+
+  
+  geom_curve(aes(x = 1993, y = 38000, xend = 1975, yend = 22000),
+             color = "gray42", size = 0.5, curvature = 0.5,
+             arrow = arrow(length = unit(0.5, 'cm'))) +
+  
+  scale_y_continuous(name = "Number of Josephs born each year",
+                     labels = label_custom_format, limits = c(0, 40000), expand = c(0, 0)) +
+  
+  scale_x_continuous(breaks = x_breaks, labels = label_year_format, limits = c(1900, 2010), expand = c(0, 0)) +
+  
+  labs(title = "Age Distribution of American Boys Named Joseph",
+       subtitle = "By year of birth",
+       x = NULL, y = NULL) +
+  
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 20, face = "bold"),
+    plot.subtitle = element_text(size = 16),
+    axis.title.y = element_text(color = "black", size = 12),
+    axis.text.y = element_text(size = 12),
+    axis.text.x = element_text(size = 12),
+    axis.title.y.right = element_blank(),
+    axis.text.y.right = element_blank(),
+    panel.grid.minor = element_blank() 
+  )
+```
+
+## Q2
+
+```{r pressure, echo=FALSE}
+ggplot(age_quantiles, aes(x = median, y = fct_reorder(name, -median))) +
+  
+  geom_hline(yintercept = seq(1, 25), color = 'gray80', linetype = 'solid', size = 0.5) +
+  geom_vline(xintercept = seq(20, 60, by = 10), colour='gray80', linetype='solid', size = 0.5) +
+  
+  geom_linerange(aes(xmin = q25, xmax = q75), color = "lightblue", size = 8) +
+  geom_point(aes(x = median), color = "red", size = 3) +
+  scale_x_continuous(breaks = seq(20, 60, by = 10), labels = c('20 years old', '30', '40', '50', '60'), position = "top") +
+  labs(title = "Median Ages For Males With the 25 Most Common Names",
+       subtitle = "Among Americans Estimated to be alive as of Jan. 1, 2014",
+       x = "", y = "") +
+  theme_minimal() +
+  theme(panel.grid.major.y = element_blank(),
+        axis.title.x = element_text(margin = margin(b = 10)),
+        axis.text.x = element_text(margin = margin(t = 10)),
+        axis.text.y = element_text(size = 10),
+        axis.ticks.x = element_blank(),
+        axis.line.x = element_blank(),
+        axis.text.x.top = element_text(vjust = 0.5))
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
